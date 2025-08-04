@@ -21,34 +21,58 @@ local key : string
 local loadedData : {}
 
 local booleanColors = {['true'] = Color3.fromRGB(85, 255, 127), ['false'] = Color3.fromRGB(255, 0, 0)}
+local SettingsTable = {['JsonEncoding'] = false}
 local cleaner = janitor.new()
 
-local function renderUI_Data(d)
+local function ProcessSettings(data, jsonSetting)
+	print(SettingsTable.JsonEncoding, typeof(data))
+	if typeof(data) ~= 'string' then return true, data end
+	local result, Value 
+	if jsonSetting == 'decode' then 
+		result, Value = pcall(function()
+			return HTTPService:JSONDecode(data)
+		end)
+	else
+		result, Value = pcall(function()
+			return HTTPService:JSONEncode(data)
+		end)
+	end
+	print(result, Value)
+	return result, Value
+end
+
+local function renderUI_Data(d, parentKey : string?)
+	print(d)
 	for k, v in d do
+		if SettingsTable.JsonEncoding then 
+			local boolResult, SettingsData = ProcessSettings(v, 'decode')
+			if boolResult then v = SettingsData end
+		end
+		print(d, v)
 		if typeof(v) == 'boolean' then 
 			local uiField = UIBoolTemplate:Clone()
-			uiField.TextLabel.Text = k
+			uiField.TextLabel.Text = parentKey..' -> '..k
 			uiField.TextButton.BackgroundColor3 = booleanColors[tostring(v)]
-			
+
 			cleaner:Add(uiField.TextButton.MouseButton1Down:Connect(function()
 				uiField.TextButton.BackgroundColor3 = booleanColors[tostring(not loadedData[k])]
 				loadedData[k] = not loadedData[k]
-				
-				print(loadedData)
+
 			end), 'Disconnect')
-			
+
 			uiField.Parent = loadedUI.ScrollingFrame
-		else
+		elseif typeof(v) == 'table' then 
+			renderUI_Data(v, k)
+		else 
 			local uiField = UITextTemplate:Clone()
-			uiField.TextLabel.Text = k
+			uiField.TextLabel.Text = parentKey..' -> '..k
 			uiField.TextBox.Text = v
-			
+
 			cleaner:Add(uiField.TextBox.FocusLost:Connect(function(enterPressed : boolean)
 				if not enterPressed then return end
 				loadedData[k] = uiField.TextBox.Text
-				print(loadedData)
 			end), 'Disconnect')
-			
+
 			uiField.Parent = loadedUI.ScrollingFrame
 		end
 	end
@@ -59,18 +83,12 @@ local function customClear()
 		if v:IsA('Frame') then
 			v:Destroy()
 		end
-		
 	end
-	
+
 	cleaner:Cleanup()
 end
 
-local function ProcessSettings(data)
-	return data
-end
-
 function commitChanges()
-	print(Datastore, key)
 	if not Datastore or not key then return warn('theres absolutely nothing to commit!') end
 	local processedData = ProcessSettings(loadedData)
 	Datastore:SetAsync(key, processedData)
@@ -80,7 +98,7 @@ function clearData()
 	UIInput.InsideDatastore.Value = false
 	Datastore = nil
 	key = nil
-	
+
 	UIInput.PlaceholderText = 'Datastore Name'
 	UIInput.Text = ''
 	customClear()
@@ -88,7 +106,7 @@ end
 
 function renderData(enterPressed : boolean)
 	if not enterPressed then return end
-	print(Datastore, key)
+
 	if not Datastore then 
 		Datastore = DatastoreService:GetDataStore(UIInput.Text) 
 		UIInput.Text = ''
@@ -96,20 +114,19 @@ function renderData(enterPressed : boolean)
 	elseif not key then 
 		key = UIInput.Text 
 		loadedData = Datastore:GetAsync(key)
-		renderUI_Data(loadedData)
-		
+		renderUI_Data(loadedData, '')
+
 		return
 	end
 end
 
 function Settings()
 	UISettingsMenu.Visible = not UISettingsMenu.Visible
-	print(UISettings.Visible)
 end
 
 return function(ui)
 	loadedUI = ui
-	
+
 	UIReturn = ui.Top.Return
 	UICommit = ui.Top.Commit
 	UISettings = ui.Top.Options
@@ -121,4 +138,11 @@ return function(ui)
 	UICommit.MouseButton1Down:Connect(commitChanges)
 	UISettings.MouseButton1Down:Connect(Settings)
 	UIInput.FocusLost:Connect(renderData)
+
+	UISettingsMenu.JsonEncoding.TextButton.MouseButton1Down:Connect(function()
+		SettingsTable.JsonEncoding = not SettingsTable.JsonEncoding
+		UISettingsMenu.JsonEncoding.TextButton.BackgroundColor3 = booleanColors[tostring(SettingsTable.JsonEncoding)]
+		print(SettingsTable.JsonEncoding)
+	end)
+
 end
