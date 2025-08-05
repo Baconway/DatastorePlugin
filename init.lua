@@ -25,38 +25,36 @@ local SettingsTable = {['JsonEncoding'] = false}
 local cleaner = janitor.new()
 
 local function ProcessSettings(data, jsonSetting)
-	print(SettingsTable.JsonEncoding, typeof(data))
-	if typeof(data) ~= 'string' then return true, data end
 	local result, Value 
+	
 	if jsonSetting == 'decode' then 
-		result, Value = pcall(function()
-			return HTTPService:JSONDecode(data)
-		end)
+		if typeof(data) ~= 'string' then 
+			result = true Value = data
+			return 
+		else
+			result, Value = pcall(function()
+				return HTTPService:JSONDecode(data)
+			end)
+		end
 	else
 		result, Value = pcall(function()
 			return HTTPService:JSONEncode(data)
 		end)
 	end
-	print(result, Value)
+
 	return result, Value
 end
 
-local function renderUI_Data(d, parentKey : string?)
-	print(d)
+local function renderUI_Data(d, parentKey : string?)	
 	for k, v in d do
-		if SettingsTable.JsonEncoding then 
-			local boolResult, SettingsData = ProcessSettings(v, 'decode')
-			if boolResult then v = SettingsData end
-		end
-		print(d, v)
 		if typeof(v) == 'boolean' then 
 			local uiField = UIBoolTemplate:Clone()
 			uiField.TextLabel.Text = parentKey..' -> '..k
 			uiField.TextButton.BackgroundColor3 = booleanColors[tostring(v)]
 
 			cleaner:Add(uiField.TextButton.MouseButton1Down:Connect(function()
-				uiField.TextButton.BackgroundColor3 = booleanColors[tostring(not loadedData[k])]
-				loadedData[k] = not loadedData[k]
+				uiField.TextButton.BackgroundColor3 = booleanColors[tostring(not d[k])]
+				d[k] = not d[k]
 
 			end), 'Disconnect')
 
@@ -70,7 +68,9 @@ local function renderUI_Data(d, parentKey : string?)
 
 			cleaner:Add(uiField.TextBox.FocusLost:Connect(function(enterPressed : boolean)
 				if not enterPressed then return end
-				loadedData[k] = uiField.TextBox.Text
+				d[k] = uiField.TextBox.Text
+				loadedData[parentKey] = d
+
 			end), 'Disconnect')
 
 			uiField.Parent = loadedUI.ScrollingFrame
@@ -90,7 +90,14 @@ end
 
 function commitChanges()
 	if not Datastore or not key then return warn('theres absolutely nothing to commit!') end
-	local processedData = ProcessSettings(loadedData)
+	local result, processedData
+	
+	if SettingsTable.JsonEncoding then 
+		result, processedData = ProcessSettings(loadedData, 'encode')
+	else
+		processedData = loadedData
+	end
+	
 	Datastore:SetAsync(key, processedData)
 end
 
@@ -106,16 +113,18 @@ end
 
 function renderData(enterPressed : boolean)
 	if not enterPressed then return end
+	local processResult
 
 	if not Datastore then 
 		Datastore = DatastoreService:GetDataStore(UIInput.Text) 
 		UIInput.Text = ''
-		UIInput.PlaceholderText = 'Input your key here' return 
+		UIInput.PlaceholderText = 'Input your key here' 
+		return 
 	elseif not key then 
 		key = UIInput.Text 
 		loadedData = Datastore:GetAsync(key)
+		if SettingsTable.JsonEncoding then processResult, loadedData = ProcessSettings(loadedData, 'decode') end
 		renderUI_Data(loadedData, '')
-
 		return
 	end
 end
